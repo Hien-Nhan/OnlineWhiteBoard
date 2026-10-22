@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="WhiteboardClient/WhiteboardClient.csproj" />
+  <Project Path="WhiteboardServer/WhiteboardServer.csproj" />
+  <Project Path="WhiteboardShared/WhiteboardShared.csproj" />
+  <Project Path="WhiteboardStressTest/WhiteboardStressTest.csproj" />
+</Solution>
