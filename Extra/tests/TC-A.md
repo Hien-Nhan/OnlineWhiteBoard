@@ -1,6 +1,6 @@
 # Danh Sách Test Case Của Thành Viên A
 
-Người phụ trách: **Thành viên A**  
+Người phụ trách: **Thành viên A (Phan Thanh Tùng)**  
 Hạng mục: **T1** (Giao thức mạng & Shared Packets) và **T7** (Bảng vẽ Win2D & Nét vẽ tự do)
 
 ---
@@ -20,14 +20,14 @@ Hạng mục: **T1** (Giao thức mạng & Shared Packets) và **T7** (Bảng v�
 
 ---
 
-## PHẦN 2: TEST CASES CHO HẠNG MỤC T7 (CLIENT BẢNG VẼ WIN2D & VẼ TỰ DO)
+## PHẦN 2: TEST CASES THIẾT KẾ CHO HẠNG MỤC T7 (CLIENT BẢNG VẼ WIN2D & VẼ TỰ DO)
 
 | Mã TC | Tên Test Case | Điều kiện thực hiện & Thao tác | Kết quả mong đợi (Expected Output) | Trạng thái |
 |:---:|---|---|---|:---:|
-| **TC-T7-01** | Bảng vẽ logic hiển thị đúng kích thước | Khởi động Client, vào phòng vẽ | Bảng vẽ hiển thị khung tỷ lệ 16:9 (1280×720 logic), nền trắng có viền và bóng đổ nhẹ | ✅ Đạt |
-| **TC-T7-02** | Vẽ chấm đơn (Click chuột không di chuyển) | Bấm chuột trái tại điểm `(100, 100)` rồi nhả ngay | Một chấm tròn nhỏ đường kính bằng cỡ nét hiện tại xuất hiện tại `(100, 100)` | ✅ Đạt |
-| **TC-T7-03** | Vẽ nét tự do (Bút chì - Pen) | Bấm giữ chuột trái và di chuyển liên tục trên bảng | Nét vẽ mượt mà theo đường di chuyển của chuột, đầu nét và góc nối bo tròn | ✅ Đạt |
-| **TC-T7-04** | Đồng bộ nét vẽ thời gian thực giữa 2 Client | Mở 2 Client A và B cùng vào phòng `ROOM101`. Client A quẹt 1 nét | Client B lập tức hiển thị nét vẽ của A với độ trễ < 50ms | ✅ Đạt |
-| **TC-T7-05** | Danh sách người dùng online | Client 1 tạo phòng, Client 2 và 3 lần lượt vào phòng | Khung bên phải của cả 3 client hiển thị đúng 3 người, có gắn nhãn "(bạn)" ở tên mình | ✅ Đạt |
-| **TC-T7-06** | Nhận gói tin rác từ mạng khi đang vẽ | Giả lập gửi chuỗi lỗi `DRAW;MALFORMED;;;\n` vào socket | Canvas không bị crash, giao diện vẫn tương tác vẽ bình thường | ✅ Đạt |
-| **TC-T7-07** | Thay đổi kích thước cửa sổ | Co giãn cửa sổ ứng dụng Client | Bảng vẽ 1280×720 tự động co giãn (`FitScale`) giữ nguyên tỷ lệ, không bị méo nét vẽ | ✅ Đạt |
+| **TC-T7-01** | Bảng vẽ logic hiển thị đúng kích thước | Khởi động Client, vào phòng vẽ | Bảng vẽ hiển thị khung tỷ lệ 16:9 (1280×720 logic), nền trắng có viền và bóng đổ nhẹ | ⏳ Chờ T7 |
+| **TC-T7-02** | Vẽ chấm đơn (Click chuột không di chuyển) | Bấm chuột trái tại điểm `(100, 100)` rồi nhả ngay | Một chấm tròn nhỏ đường kính bằng cỡ nét hiện tại xuất hiện tại `(100, 100)` | ⏳ Chờ T7 |
+| **TC-T7-03** | Vẽ nét tự do (Bút chì - Pen) | Bấm giữ chuột trái và di chuyển liên tục trên bảng | Nét vẽ mượt mà theo đường di chuyển của chuột, đầu nét và góc nối bo tròn | ⏳ Chờ T7 |
+| **TC-T7-04** | Đồng bộ nét vẽ thời gian thực giữa 2 Client | Mở 2 Client A và B cùng vào phòng `ROOM101`. Client A quẹt 1 nét | Client B lập tức hiển thị nét vẽ của A với độ trễ < 50ms | ⏳ Chờ T7 |
+| **TC-T7-05** | Danh sách người dùng online | Client 1 tạo phòng, Client 2 và 3 lần lượt vào phòng | Khung bên phải của cả 3 client hiển thị đúng 3 người, có gắn nhãn "(bạn)" ở tên mình | ⏳ Chờ T7 |
+| **TC-T7-06** | Nhận gói tin rác từ mạng khi đang vẽ | Giả lập gửi chuỗi lỗi `DRAW;MALFORMED;;;\n` vào socket | Canvas không bị crash, giao diện vẫn tương tác vẽ bình thường | ⏳ Chờ T7 |
+| **TC-T7-07** | Thay đổi kích thước cửa sổ | Co giãn cửa sổ ứng dụng Client | Bảng vẽ 1280×720 tự động co giãn (`FitScale`) giữ nguyên tỷ lệ, không bị méo nét vẽ | ⏳ Chờ T7 |
