@@ -1,0 +1,96 @@
+<Page
+    x:Class="WhiteboardClient.Views.LoginPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Padding="24">
+            <Border
+                MaxWidth="460"
+                Padding="32"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                CornerRadius="8"
+                BorderThickness="1"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+
+                <StackPanel Spacing="16">
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Whiteboard Online" Style="{StaticResource TitleTextBlockStyle}" />
+                        <TextBlock
+                            Text="Bảng vẽ chung theo thời gian thực"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+
+                    <TextBox
+                        x:Name="NameBox"
+                        Header="Tên của bạn"
+                        PlaceholderText="Ví dụ: Nhân"
+                        MaxLength="20"
+                        KeyDown="Input_KeyDown" />
+
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="110" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox
+                            x:Name="ServerBox"
+                            Header="Địa chỉ Server (IP)"
+                            PlaceholderText="127.0.0.1"
+                            KeyDown="Input_KeyDown" />
+                        <TextBox
+                            x:Name="PortBox"
+                            Grid.Column="1"
+                            Header="Cổng"
+                            PlaceholderText="8888"
+                            MaxLength="5"
+                            KeyDown="Input_KeyDown" />
+                    </Grid>
+
+                    <TextBlock
+                        TextWrapping="Wrap"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Chạy cùng máy với Server: dùng 127.0.0.1. Máy khác cùng WiFi: nhập IP của máy chạy Server (hiển thị trong cửa sổ Server)." />
+
+                    <TextBox
+                        x:Name="RoomBox"
+                        Header="Mã phòng (chỉ nhập khi vào phòng có sẵn)"
+                        PlaceholderText="Ví dụ: ROOM12345"
+                        MaxLength="20"
+                        KeyDown="Input_KeyDown" />
+
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button
+                            x:Name="CreateButton"
+                            Content="Tạo phòng mới"
+                            HorizontalAlignment="Stretch"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Click="CreateButton_Click" />
+                        <Button
+                            x:Name="JoinButton"
+                            Grid.Column="1"
+                            Content="Vào phòng"
+                            HorizontalAlignment="Stretch"
+                            Click="JoinButton_Click" />
+                    </Grid>
+
+                    <ProgressBar x:Name="BusyBar" IsIndeterminate="True" Visibility="Collapsed" />
+
+                    <InfoBar
+                        x:Name="StatusBar"
+                        IsOpen="False"
+                        IsClosable="False"
+                        Severity="Informational" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</Page>
