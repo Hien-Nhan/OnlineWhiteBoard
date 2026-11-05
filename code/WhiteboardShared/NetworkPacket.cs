@@ -45,8 +45,8 @@ namespace WhiteboardShared
                     return $"CLEAR_CANVAS;{RoomID}\n";
 
                 case "DRAW":
-                    // Cấu trúc mở rộng: DRAW;Mã_Phòng;X1,Y1;X2,Y2;ColorHex;Thickness\n
-                    return $"DRAW;{RoomID};{Data}\n";
+                    // Cấu trúc mở rộng: DRAW;FREEHAND|SHAPE;...;Mã_Phòng\n (RoomID luôn nằm ở cuối gói DRAW)
+                    return $"DRAW;{Data};{RoomID}\n";
 
                 default:
                     return $"{Command};{Data}\n";
