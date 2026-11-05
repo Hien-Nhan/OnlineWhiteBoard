@@ -1,48 +1,40 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Numerics;
-using System.Threading.Tasks;
 using Microsoft.Graphics.Canvas;
-using Microsoft.Graphics.Canvas.Geometry;
+using Microsoft.Graphics.Canvas.UI;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
-using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
-using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
-using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
-using Windows.Storage;
-using Windows.Storage.Pickers;
 using WhiteboardClient.Models;
 using WhiteboardClient.Services;
 using WhiteboardShared;
-using WinRT.Interop;
 using Color = Windows.UI.Color;
 
 namespace WhiteboardClient.Views;
 
 /// <summary>
-/// Màn hình bảng vẽ chính.
-/// Bảng vẽ có kích thước LOGIC cố định (1280 x 720) giống nhau trên mọi máy,
-/// được co giãn vừa khít cửa sổ -> các máy màn hình khác nhau vẫn thấy cùng một hình.
+/// Màn hình bảng vẽ chính (Core &amp; Vòng đời).
+/// Bảng vẽ có kích thước LOGIC cố định (1280 x 720) giống nhau trên mọi thiết bị,
+/// tự động co giãn vừa khít cửa sổ giúp các máy có màn hình khác nhau vẫn đồng bộ chính xác vị trí nét vẽ.
+/// Phụ trách: Thành viên A (Hạng mục T7) &amp; Thành viên E (Xử lý mất kết nối - T10).
 /// </summary>
 public sealed partial class BoardPage : Page
 {
     private const int BoardW = 1280;
     private const int BoardH = 720;
     private const double BoardMargin = 8;
-    private const float RenderDpi = 192f;   // bảng được lưu ở độ phân giải gấp đôi -> zoom vẫn nét, ảnh PNG xuất ra 2560 x 1440
+    private const float RenderDpi = 192f;   // Lưu ở mật độ điểm ảnh gấp đôi (2560 x 1440 px) để phóng to vẫn sắc nét
     private const float MinZoom = 0.25f;
     private const float MaxZoom = 8f;
     private const double PanKeepVisible = 80;
 
-    // Bảng màu nhanh (giữ nguyên bảng màu của bản WinForms)
+    // Bảng màu nhanh mặc định
     private static readonly ColorSwatch[] PaletteColors =
     {
         new(Colors.Black),
@@ -55,10 +47,10 @@ public sealed partial class BoardPage : Page
         new(Color.FromArgb(255, 121, 85, 72))
     };
 
-    /// <summary>Danh sách người đang online (x:Bind).</summary>
+    /// <summary>Danh sách thành viên đang trực tuyến trong phòng (liên kết giao diện qua x:Bind).</summary>
     public ObservableCollection<UserItem> Users { get; } = new();
 
-    // ---- Trạng thái ----
+    // ---- Trạng thái phiên làm việc & công cụ ----
     private BoardSession _session = new("", "", true);
     private DrawTool _tool = DrawTool.Pen;
     private Color _color = Colors.Black;
@@ -66,17 +58,20 @@ public sealed partial class BoardPage : Page
 
     private CanvasRenderTarget? _board;
 
-    private bool _isDrawing;        // đang vẽ nét tự do (bút / tẩy)
-    private bool _isDrawingShape;   // đang kéo hình (đường thẳng / chữ nhật / tròn)
+    // ---- Trạng thái thao tác vẽ & con trỏ ----
+    private bool _isDrawing;        // Đang vẽ nét tự do (bút / tẩy)
+    private bool _isDrawingShape;   // Đang kéo hình khối (đường thẳng / chữ nhật / tròn)
+    private uint? _activePointerId; // Khóa ID con trỏ đang thao tác để chống nhảy nét khi chạm đa điểm
     private BoardPoint _lastSentPoint;
     private BoardPoint _shapeStart;
     private BoardPoint _shapeEnd;
 
+    // ---- Hệ số biến đổi tọa độ hiển thị ----
     private float _scale = 1f;
     private float _offX;
     private float _offY;
 
-    // Zoom / kéo bảng. _zoom = 1 nghĩa là "vừa khít cửa sổ"; _panX/_panY là độ lệch so với vị trí chính giữa.
+    // ---- Trạng thái thu phóng (Zoom) & kéo bảng (Pan) ----
     private float _zoom = 1f;
     private double _panX;
     private double _panY;
@@ -86,13 +81,14 @@ public sealed partial class BoardPage : Page
     private double _panStartY;
     private bool _panelsHidden;
 
+    // ---- Trạng thái kết nối & điều phối luồng UI ----
     private bool _connectionLost;
     private volatile bool _closed;
     private DispatcherQueue? _dispatcher;
     private readonly DispatcherTimer _copyTimer;
     private readonly DispatcherTimer _noticeTimer;
 
-    // Ngăn các sự kiện ValueChanged/SelectionChanged chạy trong lúc XAML còn đang khởi tạo
+    // Ngăn các sự kiện ValueChanged/SelectionChanged kích hoạt sớm khi XAML đang khởi tạo
     private readonly bool _ready;
     private readonly Dictionary<DrawTool, ToggleButton> _toolButtons = new();
 
@@ -121,18 +117,19 @@ public sealed partial class BoardPage : Page
             NoticeBar.IsOpen = false;
         };
 
-        // Bảng vẽ ngoài màn hình: toạ độ logic 1280 x 720 (đơn vị DIP), lưu ở 192 dpi = 2560 x 1440 pixel
-        _board = new CanvasRenderTarget(CanvasDevice.GetSharedDevice(), BoardW, BoardH, RenderDpi);
-        ClearBoardLocal();
+        // Khởi tạo bộ đệm bảng vẽ ngoài màn hình (Offscreen RenderTarget): 1280 x 720 DIP ở 192 DPI (2560 x 1440 pixel)
+        EnsureBoardResource(CanvasDevice.GetSharedDevice());
 
-        // Gán trong code (không dùng x:Bind) để chắc chắn đã có dữ liệu trước khi chọn ô màu đầu tiên
+        // Gán nguồn bảng màu trước khi thiết lập ô màu mặc định đầu tiên
         PaletteView.ItemsSource = PaletteColors;
 
-        // Đổi kích thước cửa sổ / ẩn hiện panel: giữ bảng không trôi mất khỏi khung nhìn và cập nhật % zoom
+        // Tự động tính lại tỷ lệ hiển thị và giữ bảng trong vùng nhìn khi thay đổi kích thước cửa sổ
         Surface.SizeChanged += (_, _) =>
         {
+            if (_closed) return;
             ClampPan();
             UpdateZoomUi();
+            BoardCanvas.Invalidate();
         };
 
         _ready = true;
@@ -142,13 +139,16 @@ public sealed partial class BoardPage : Page
     }
 
     // ==================================================================
-    //  VÒNG ĐỜI TRANG
+    //  VÒNG ĐỜI TRANG & QUẢN LÝ TÀI NGUYÊN ĐỒ HỌA WIN2D
     // ==================================================================
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
 
-        if (e.Parameter is BoardSession session) _session = session;
+        if (e.Parameter is BoardSession session)
+        {
+            _session = session;
+        }
 
         RoomCodeText.Text = _session.RoomId;
         GreetingText.Text = "Xin chào, " + _session.UserName;
@@ -159,7 +159,7 @@ public sealed partial class BoardPage : Page
         NetworkClient.OnDisconnected += HandleDisconnected;
         NetworkClient.StartReceiving();
 
-        // Báo danh với Server: tạo/vào phòng (Server sẽ gửi lại lịch sử nét vẽ + danh sách người dùng)
+        // Báo danh với Server: tạo hoặc gia nhập phòng (Server sẽ phát lại lịch sử nét vẽ + danh sách online)
         if (!NetworkClient.SendMessage($"{_session.JoinCommand};{_session.UserName};{_session.RoomId}"))
         {
             MarkConnectionLost();
@@ -178,220 +178,46 @@ public sealed partial class BoardPage : Page
 
     private void Page_Unloaded(object sender, RoutedEventArgs e)
     {
-        // Win2D yêu cầu gỡ CanvasControl khỏi cây giao diện khi trang bị huỷ để không rò rỉ bộ nhớ
-        BoardCanvas.RemoveFromVisualTree();
+        // Đánh dấu đóng trang ngay lập tức để chặn mọi gói tin trễ trong hàng đợi DispatcherQueue
+        _closed = true;
 
         CanvasRenderTarget? board = _board;
         _board = null;
-        board?.Dispose();
-    }
 
-    private void BoardCanvas_CreateResources(CanvasControl sender, Microsoft.Graphics.Canvas.UI.CanvasCreateResourcesEventArgs args)
-    {
-        // Bảng vẽ đã được tạo ở hàm khởi tạo; không có tài nguyên nào khác cần nạp
-    }
-
-    // ==================================================================
-    //  CHỌN CÔNG CỤ / MÀU / CỠ NÉT
-    // ==================================================================
-    private void ToolButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is ToggleButton { Tag: string tag } && Enum.TryParse(tag, out DrawTool tool))
-        {
-            SelectTool(tool);
-        }
-    }
-
-    private void SelectTool(DrawTool tool)
-    {
-        _tool = tool;
-        _isDrawing = false;
-        _isDrawingShape = false;
-
-        // Chỉ một công cụ được bật; bấm lại công cụ đang chọn thì vẫn giữ trạng thái bật
-        foreach (KeyValuePair<DrawTool, ToggleButton> kv in _toolButtons)
-        {
-            kv.Value.IsChecked = kv.Key == tool;
-        }
-
-        Surface.SetCursorShape(tool == DrawTool.Pan ? InputSystemCursorShape.SizeAll : InputSystemCursorShape.Cross);
-
-        UpdateToolInfo();
-        BoardCanvas.Invalidate();
-    }
-
-    private void PaletteView_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_ready) return;
-        if (PaletteView.SelectedItem is ColorSwatch swatch)
-        {
-            SetColor(swatch.Color, fromPalette: true);
-        }
-    }
-
-    private void CustomColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
-    {
-        if (!_ready) return;
-        SetColor(args.NewColor, fromPalette: false);
-    }
-
-    private void SetColor(Color c, bool fromPalette)
-    {
-        _color = c;
-
-        // Màu tuỳ chọn thì bỏ đánh dấu trong bảng màu nhanh
-        if (!fromPalette) PaletteView.SelectedIndex = -1;
-
-        ColorPreview.Background = new SolidColorBrush(c);
-        ColorPreviewText.Text = HexColor.ToHex(c);
-        double luminance = 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
-        ColorPreviewText.Foreground = new SolidColorBrush(luminance > 150 ? Colors.Black : Colors.White);
-
-        if (_tool == DrawTool.Eraser) SelectTool(DrawTool.Pen);
-        UpdateToolInfo();
-    }
-
-    private void SizeSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
-    {
-        if (!_ready) return;
-        _brush = (int)Math.Round(SizeSlider.Value);
-        SizeText.Text = _brush + " px";
-        UpdateToolInfo();
-    }
-
-    private void UpdateToolInfo()
-    {
-        if (!_ready && ToolInfoText == null) return;
-
-        string name = _tool switch
-        {
-            DrawTool.Pen => "Bút vẽ",
-            DrawTool.Eraser => "Tẩy",
-            DrawTool.Line => "Đường thẳng",
-            DrawTool.Rectangle => "Hình chữ nhật",
-            DrawTool.Pan => "Di chuyển bảng",
-            _ => "Hình tròn"
-        };
-        ToolInfoText.Text = $"Công cụ: {name}   |   Cỡ nét: {_brush} px   |   Màu: {HexColor.ToHex(_color)}   |   Cuộn chuột: zoom   |   Chuột phải/giữa: kéo bảng";
-    }
-
-    // ==================================================================
-    //  NÚT CHỨC NĂNG
-    // ==================================================================
-    private void CopyButton_Click(object sender, RoutedEventArgs e)
-    {
         try
         {
-            var package = new DataPackage();
-            package.SetText(_session.RoomId);
-            Clipboard.SetContent(package);
-
-            CopyText.Text = "Đã sao chép!";
-            _copyTimer.Stop();
-            _copyTimer.Start();
+            // Win2D yêu cầu gỡ CanvasControl khỏi cây giao diện khi trang bị hủy để tránh rò rỉ bộ nhớ GPU
+            BoardCanvas.RemoveFromVisualTree();
         }
         catch (Exception)
         {
-            ShowNotice("Không sao chép được. Mã phòng: " + _session.RoomId, InfoBarSeverity.Warning, autoHide: false);
+            // Bỏ qua nếu cây giao diện đã tự giải phóng trước đó
         }
+
+        board?.Dispose();
     }
 
-    private void LeaveButton_Click(object sender, RoutedEventArgs e)
+    private void BoardCanvas_CreateResources(CanvasControl sender, CanvasCreateResourcesEventArgs args)
     {
-        NetworkClient.Disconnect();
-        Frame.Navigate(typeof(LoginPage));
-        Frame.BackStack.Clear();
+        // Đảm bảo bộ đệm bảng vẽ luôn tương thích với thiết bị GPU hiện hành (kể cả khi thu hồi/tái tạo GPU)
+        EnsureBoardResource(sender.Device);
     }
 
-    private async void ClearButton_Click(object sender, RoutedEventArgs e)
+    private void EnsureBoardResource(CanvasDevice? device)
     {
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = "Xóa bảng vẽ?",
-            Content = "Xóa toàn bộ bảng vẽ của TẤT CẢ mọi người trong phòng?\nHành động này không thể hoàn tác.",
-            PrimaryButtonText = "Xóa",
-            CloseButtonText = "Hủy",
-            DefaultButton = ContentDialogButton.Close
-        };
+        if (_closed) return;
+        CanvasDevice targetDevice = device ?? CanvasDevice.GetSharedDevice();
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (_board != null && _board.Device == targetDevice) return;
 
-        if (!NetworkClient.SendMessage("CLEAR_CANVAS;" + _session.RoomId))
-        {
-            MarkConnectionLost();
-        }
-    }
-
-    private async void SaveButton_Click(object sender, RoutedEventArgs e)
-    {
-        CanvasRenderTarget? board = _board;
-        if (board == null || App.MainWindow == null) return;
-
-        try
-        {
-            var picker = new FileSavePicker
-            {
-                SuggestedStartLocation = PickerLocationId.PicturesLibrary,
-                SuggestedFileName = "Whiteboard_" + _session.RoomId
-            };
-            picker.FileTypeChoices.Add("PNG Image", new List<string> { ".png" });
-
-            // Ứng dụng unpackaged phải gắn hộp thoại chọn file với handle của cửa sổ
-            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.MainWindow));
-
-            StorageFile? file = await picker.PickSaveFileAsync();
-            if (file == null) return;
-
-            using var stream = await file.OpenAsync(FileAccessMode.ReadWrite);
-            stream.Size = 0; // ghi đè hoàn toàn nếu file đã tồn tại
-            await board.SaveAsync(stream, CanvasBitmapFileFormat.Png);
-
-            ShowNotice("Đã lưu ảnh thành công: " + file.Name, InfoBarSeverity.Success, autoHide: true);
-        }
-        catch (Exception ex)
-        {
-            ShowNotice("Không lưu được ảnh: " + ex.Message, InfoBarSeverity.Error, autoHide: false);
-        }
-    }
-
-    private void ShowNotice(string message, InfoBarSeverity severity, bool autoHide)
-    {
-        _noticeTimer.Stop();
-        NoticeBar.Severity = severity;
-        NoticeBar.Message = message;
-        NoticeBar.IsOpen = true;
-        if (autoHide) _noticeTimer.Start();
-    }
-
-    private void ClearBoardLocal()
-    {
-        if (_board == null) return;
-        using (CanvasDrawingSession ds = _board.CreateDrawingSession())
-        {
-            ds.Clear(Colors.White);
-        }
-        BoardCanvas?.Invalidate();
-    }
-
-    private void MarkConnectionLost()
-    {
-        if (_connectionLost || _closed) return;
-        _connectionLost = true;
-        _isDrawing = false;
-        _isDrawingShape = false;
-
-        ConnDotOk.Visibility = Visibility.Collapsed;
-        ConnDotLost.Visibility = Visibility.Visible;
-        ConnText.Text = "Mất kết nối với Server";
-        ShowNotice(
-            "Mất kết nối tới Server. Hãy bấm \"Rời phòng\" rồi đăng nhập lại khi Server hoạt động.",
-            InfoBarSeverity.Error, autoHide: false);
-        BoardCanvas.Invalidate();
+        CanvasRenderTarget? oldBoard = _board;
+        _board = new CanvasRenderTarget(targetDevice, BoardW, BoardH, RenderDpi);
+        ClearBoardLocal();
+        oldBoard?.Dispose();
     }
 
     // ==================================================================
-    //  NHẬN DỮ LIỆU TỪ SERVER (luồng nền -> luồng giao diện)
+    //  NHẬN & XỬ LÝ GÓI TIN TỪ SERVER (Background Thread -> UI Thread)
     // ==================================================================
     private void HandleNetworkData(string data)
     {
@@ -407,44 +233,48 @@ public sealed partial class BoardPage : Page
 
     private void ProcessPacket(string raw)
     {
-        if (_closed) return;
+        if (_closed || _board == null) return;
+
         string clean = raw.Replace("\0", "").Replace("\uFEFF", "").Trim();
         if (clean.Length == 0) return;
 
         string[] p = clean.Split(';');
+        if (p.Length == 0) return;
+
         try
         {
-            if (p[0] == "USER_LIST")
+            string cmd = p[0].Trim().ToUpperInvariant();
+
+            if (cmd == "USER_LIST")
             {
-                UpdateUserList(p.Length >= 2 ? p[1] : "");
+                // Hỗ trợ song song cả 2 quy chuẩn gói USER_LIST:
+                // 1) Chuẩn 2 phần từ RoomManager (T3): USER_LIST;User1,User2
+                // 2) Chuẩn 3 phần từ NetworkPacket (T1): USER_LIST;RoomID;User1,User2
+                string userCsv = p.Length >= 3 ? p[2] : (p.Length >= 2 ? p[1] : string.Empty);
+                UpdateUserList(userCsv);
             }
-            else if (p[0] == DrawPacket.CommandName)
+            else if (cmd == DrawPacket.CommandName)
             {
                 if (DrawPacket.TryParse(clean, out DrawPacket? packet) && packet != null)
                 {
                     ApplyRemoteDraw(packet);
                 }
             }
-            else if (p[0] == "CLEAR_CANVAS")
+            else if (cmd == "CLEAR_CANVAS")
             {
                 ClearBoardLocal();
-            }
-            else if (p[0] == "CLEAR_FAILED")
-            {
-                ShowNotice(
-                    p.Length >= 2 ? string.Join(";", p, 1, p.Length - 1) : "Server không thể xóa bảng vẽ.",
-                    InfoBarSeverity.Error,
-                    autoHide: false);
             }
         }
         catch (Exception)
         {
-            // Gói tin sai định dạng: bỏ qua, không làm sập ứng dụng
+            // Bỏ qua an toàn các gói tin lỗi hoặc hỏng định dạng mà không làm gián đoạn phiên vẽ
         }
     }
 
     private void ApplyRemoteDraw(DrawPacket packet)
     {
+        if (_closed || _board == null) return;
+
         Color color = HexColor.Parse(packet.ColorHex);
 
         if (packet.Kind == DrawKind.Freehand)
@@ -459,15 +289,21 @@ public sealed partial class BoardPage : Page
                 ShapeKind.Circle => DrawTool.Circle,
                 _ => DrawTool.Line
             };
-            DrawShapeOnBoard(tool,
-                new BoardPoint(packet.X1, packet.Y1), new BoardPoint(packet.X2, packet.Y2),
-                color, packet.Size);
+            DrawShapeOnBoard(
+                tool,
+                new BoardPoint(packet.X1, packet.Y1),
+                new BoardPoint(packet.X2, packet.Y2),
+                color,
+                packet.Size);
         }
+
         BoardCanvas.Invalidate();
     }
 
     private void UpdateUserList(string csv)
     {
+        if (_closed) return;
+
         string[] names = csv.Split(',', StringSplitOptions.RemoveEmptyEntries);
 
         Users.Clear();
@@ -477,358 +313,14 @@ public sealed partial class BoardPage : Page
             string name = raw.Trim();
             if (name.Length == 0) continue;
 
-            bool isSelf = !markedSelf && name == _session.UserName;
-            if (isSelf) markedSelf = true;
+            bool isSelf = !markedSelf && string.Equals(name, _session.UserName, StringComparison.Ordinal);
+            if (isSelf)
+            {
+                markedSelf = true;
+            }
             Users.Add(new UserItem(name, isSelf));
         }
 
         OnlineHeader.Text = $"Đang online ({Users.Count})";
-    }
-
-    // ==================================================================
-    //  CHUỘT / BÚT / CẢM ỨNG: VẼ VÀ GỬI LÊN SERVER
-    // ==================================================================
-    /// <summary>Tỉ lệ để tờ giấy vừa khít vùng hiển thị (ứng với zoom = 1).</summary>
-    private double FitScale()
-    {
-        double availW = Math.Max(50, Surface.ActualWidth - BoardMargin * 2);
-        double availH = Math.Max(50, Surface.ActualHeight - BoardMargin * 2);
-        return Math.Min(availW / BoardW, availH / BoardH);
-    }
-
-    private void UpdateTransform()
-    {
-        _scale = (float)(FitScale() * _zoom);
-        _offX = (float)((Surface.ActualWidth - BoardW * _scale) / 2.0 + _panX);
-        _offY = (float)((Surface.ActualHeight - BoardH * _scale) / 2.0 + _panY);
-    }
-
-    /// <summary>Không cho kéo bảng ra khỏi khung nhìn hoàn toàn: luôn chừa lại một góc.</summary>
-    private void ClampPan()
-    {
-        double sc = FitScale() * _zoom;
-        double w = BoardW * sc;
-        double h = BoardH * sc;
-        double vw = Surface.ActualWidth;
-        double vh = Surface.ActualHeight;
-
-        double minX = PanKeepVisible - w - (vw - w) / 2.0;
-        double maxX = (vw - PanKeepVisible) - (vw - w) / 2.0;
-        double minY = PanKeepVisible - h - (vh - h) / 2.0;
-        double maxY = (vh - PanKeepVisible) - (vh - h) / 2.0;
-
-        _panX = Math.Max(minX, Math.Min(maxX, _panX));
-        _panY = Math.Max(minY, Math.Min(maxY, _panY));
-    }
-
-    /// <summary>Phóng/thu quanh một điểm trên màn hình: điểm trên bảng nằm dưới con trỏ được giữ nguyên chỗ.</summary>
-    private void ZoomAt(Point anchor, float newZoom)
-    {
-        UpdateTransform();
-        double bx = (anchor.X - _offX) / _scale;
-        double by = (anchor.Y - _offY) / _scale;
-
-        _zoom = Math.Max(MinZoom, Math.Min(MaxZoom, newZoom));
-        double sc = FitScale() * _zoom;
-        _panX = anchor.X - bx * sc - (Surface.ActualWidth - BoardW * sc) / 2.0;
-        _panY = anchor.Y - by * sc - (Surface.ActualHeight - BoardH * sc) / 2.0;
-
-        ClampPan();
-        UpdateZoomUi();
-        BoardCanvas.Invalidate();
-    }
-
-    private void ResetView()
-    {
-        _zoom = 1f;
-        _panX = 0;
-        _panY = 0;
-        UpdateZoomUi();
-        BoardCanvas.Invalidate();
-    }
-
-    private void UpdateZoomUi()
-    {
-        UpdateTransform();
-        ZoomText.Text = $"{Math.Round(_scale * 100)}%";
-    }
-
-    private Point ViewCenter() => new(Surface.ActualWidth / 2.0, Surface.ActualHeight / 2.0);
-
-    private void ZoomInButton_Click(object sender, RoutedEventArgs e) => ZoomAt(ViewCenter(), _zoom * 1.25f);
-
-    private void ZoomOutButton_Click(object sender, RoutedEventArgs e) => ZoomAt(ViewCenter(), _zoom / 1.25f);
-
-    private void ZoomResetButton_Click(object sender, RoutedEventArgs e) => ResetView();
-
-    /// <summary>Ẩn/hiện hai panel hai bên để bảng vẽ chiếm toàn bộ chiều ngang.</summary>
-    private void FocusButton_Click(object sender, RoutedEventArgs e)
-    {
-        _panelsHidden = !_panelsHidden;
-        Visibility v = _panelsHidden ? Visibility.Collapsed : Visibility.Visible;
-        LeftPanel.Visibility = v;
-        RightPanel.Visibility = v;
-        FocusText.Text = _panelsHidden ? "Hiện công cụ" : "Mở rộng bảng";
-        ResetView();
-    }
-
-    private void Surface_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
-    {
-        PointerPoint pp = e.GetCurrentPoint(Surface);
-        int delta = pp.Properties.MouseWheelDelta;
-        if (delta == 0) return;
-
-        // Một nấc cuộn chuột (120) ~ +/-20%
-        ZoomAt(pp.Position, _zoom * (float)Math.Pow(1.0015, delta));
-        e.Handled = true;
-    }
-
-    private BoardPoint ToBoard(Point p)
-    {
-        UpdateTransform();
-        int x = (int)Math.Round((p.X - _offX) / _scale);
-        int y = (int)Math.Round((p.Y - _offY) / _scale);
-        x = Math.Max(0, Math.Min(BoardW - 1, x));
-        y = Math.Max(0, Math.Min(BoardH - 1, y));
-        return new BoardPoint(x, y);
-    }
-
-    private void Surface_PointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        if (_isDrawing || _isDrawingShape || _isPanning) return;
-
-        PointerPoint pp = e.GetCurrentPoint(Surface);
-        PointerPointProperties props = pp.Properties;
-
-        // Kéo bảng: chuột phải, chuột giữa, hoặc chuột trái khi đang chọn công cụ "Di chuyển bảng"
-        if (props.IsMiddleButtonPressed || props.IsRightButtonPressed ||
-            (props.IsLeftButtonPressed && _tool == DrawTool.Pan))
-        {
-            _isPanning = true;
-            _panPointerStart = pp.Position;
-            _panStartX = _panX;
-            _panStartY = _panY;
-            Surface.CapturePointer(e.Pointer);
-            return;
-        }
-
-        if (!props.IsLeftButtonPressed || _connectionLost || _board == null) return;
-
-        Surface.CapturePointer(e.Pointer);
-        BoardPoint pt = ToBoard(pp.Position);
-
-        if (_tool == DrawTool.Pen || _tool == DrawTool.Eraser)
-        {
-            _isDrawing = true;
-            _lastSentPoint = pt;
-            DrawFreehandAndSend(pt, pt); // chấm một điểm khi bấm chuột
-        }
-        else
-        {
-            _isDrawingShape = true;
-            _shapeStart = pt;
-            _shapeEnd = pt;
-        }
-    }
-
-    private void Surface_PointerMoved(object sender, PointerRoutedEventArgs e)
-    {
-        PointerPoint pp = e.GetCurrentPoint(Surface);
-
-        if (_isPanning)
-        {
-            _panX = _panStartX + (pp.Position.X - _panPointerStart.X);
-            _panY = _panStartY + (pp.Position.Y - _panPointerStart.Y);
-            ClampPan();
-            BoardCanvas.Invalidate();
-            return;
-        }
-
-        BoardPoint pt = ToBoard(pp.Position);
-        CoordText.Text = $"X: {pt.X}, Y: {pt.Y}";
-
-        if (_isDrawing)
-        {
-            int dx = pt.X - _lastSentPoint.X;
-            int dy = pt.Y - _lastSentPoint.Y;
-            if (dx * dx + dy * dy >= 9) // cách >= 3 px mới vẽ/gửi (giảm tải mạng)
-            {
-                DrawFreehandAndSend(_lastSentPoint, pt);
-                _lastSentPoint = pt;
-            }
-        }
-        else if (_isDrawingShape)
-        {
-            _shapeEnd = pt;
-            BoardCanvas.Invalidate();
-        }
-    }
-
-    private void Surface_PointerReleased(object sender, PointerRoutedEventArgs e)
-    {
-        BoardPoint end = ToBoard(e.GetCurrentPoint(Surface).Position);
-
-        // QUAN TRỌNG: chốt nét vẽ TRƯỚC, rồi mới nhả capture.
-        // ReleasePointerCapture kích hoạt PointerCaptureLost ngay lập tức; nếu nhả trước,
-        // hình đang kéo (chữ nhật, tròn, đường thẳng) sẽ bị coi là bị huỷ và không bao giờ được vẽ.
-        FinishStroke(end);
-        Surface.ReleasePointerCapture(e.Pointer);
-    }
-
-    // Mất capture bất ngờ (đổi cửa sổ, bấm Alt+Tab...): giữ lại phần đã kéo tới vị trí cuối cùng
-    private void Surface_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => FinishStroke(null);
-
-    // Hệ thống huỷ thao tác (ví dụ cử chỉ cảm ứng): bỏ hình đang kéo dở
-    private void Surface_PointerCanceled(object sender, PointerRoutedEventArgs e) => FinishStroke(null, commit: false);
-
-    /// <summary>Kết thúc nét đang vẽ/kéo. Gọi nhiều lần liên tiếp cũng an toàn (lần sau không làm gì).</summary>
-    private void FinishStroke(BoardPoint? end, bool commit = true)
-    {
-        if (_isPanning)
-        {
-            _isPanning = false;
-            return;
-        }
-
-        if (_isDrawing)
-        {
-            _isDrawing = false;
-            if (commit && end is BoardPoint last && last != _lastSentPoint)
-            {
-                DrawFreehandAndSend(_lastSentPoint, last);
-            }
-        }
-        else if (_isDrawingShape)
-        {
-            _isDrawingShape = false;
-            if (end is BoardPoint last) _shapeEnd = last;
-
-            if (commit && _shapeStart != _shapeEnd)
-            {
-                DrawShapeOnBoard(_tool, _shapeStart, _shapeEnd, _color, _brush);
-
-                ShapeKind kind = _tool switch
-                {
-                    DrawTool.Rectangle => ShapeKind.Rectangle,
-                    DrawTool.Circle => ShapeKind.Circle,
-                    _ => ShapeKind.Line
-                };
-                SendDraw(DrawPacket.CreateShape(kind,
-                    _shapeStart.X, _shapeStart.Y, _shapeEnd.X, _shapeEnd.Y,
-                    HexColor.ToHex(_color), _brush, _session.RoomId));
-            }
-            BoardCanvas.Invalidate();
-        }
-    }
-
-    private void DrawFreehandAndSend(BoardPoint a, BoardPoint b)
-    {
-        Color color = _tool == DrawTool.Eraser ? Colors.White : _color;
-        int size = _tool == DrawTool.Eraser ? _brush * 4 : _brush;
-
-        DrawSegmentOnBoard(a.X, a.Y, b.X, b.Y, color, size);
-        SendDraw(DrawPacket.CreateFreehand(a.X, a.Y, b.X, b.Y, HexColor.ToHex(color), size, _session.RoomId));
-        BoardCanvas.Invalidate();
-    }
-
-    private void SendDraw(DrawPacket packet)
-    {
-        if (!NetworkClient.SendMessage(packet.Serialize())) MarkConnectionLost();
-    }
-
-    // ==================================================================
-    //  VẼ LÊN BẢNG (Win2D)
-    // ==================================================================
-    private void BoardCanvas_Draw(CanvasControl sender, CanvasDrawEventArgs args)
-    {
-        CanvasRenderTarget? board = _board;
-        if (board == null) return;
-
-        CanvasDrawingSession ds = args.DrawingSession;
-        UpdateTransform();
-        var dest = new Rect(_offX, _offY, BoardW * _scale, BoardH * _scale);
-
-        // Bóng đổ nhẹ phía sau tờ giấy
-        ds.FillRectangle(new Rect(dest.X + 3, dest.Y + 4, dest.Width, dest.Height), Color.FromArgb(40, 0, 0, 0));
-
-        ds.DrawImage(board, dest, new Rect(0, 0, BoardW, BoardH), 1f, CanvasImageInterpolation.HighQualityCubic);
-        ds.DrawRectangle(dest, Color.FromArgb(255, 150, 156, 166), 1f);
-
-        // Xem trước hình đang kéo (nét đứt), cắt gọn trong tờ giấy
-        if (_isDrawingShape)
-        {
-            ds.Transform = Matrix3x2.CreateScale(_scale) * Matrix3x2.CreateTranslation(_offX, _offY);
-            using (ds.CreateLayer(1f, new Rect(0, 0, BoardW, BoardH)))
-            {
-                StrokeShape(ds, _tool, _shapeStart, _shapeEnd, _color, _brush, dashed: true);
-            }
-            ds.Transform = Matrix3x2.Identity;
-        }
-    }
-
-    private void DrawSegmentOnBoard(int x1, int y1, int x2, int y2, Color color, int size)
-    {
-        if (_board == null) return;
-        using CanvasDrawingSession ds = _board.CreateDrawingSession();
-        StrokeSegment(ds, x1, y1, x2, y2, color, size);
-    }
-
-    private void DrawShapeOnBoard(DrawTool tool, BoardPoint a, BoardPoint b, Color color, int size)
-    {
-        if (_board == null) return;
-        using CanvasDrawingSession ds = _board.CreateDrawingSession();
-        StrokeShape(ds, tool, a, b, color, size, dashed: false);
-    }
-
-    private static void StrokeSegment(CanvasDrawingSession ds, int x1, int y1, int x2, int y2, Color color, int size)
-    {
-        ds.Antialiasing = CanvasAntialiasing.Antialiased;
-
-        if (x1 == x2 && y1 == y2)
-        {
-            ds.FillCircle(x1, y1, size / 2f, color); // chấm một điểm
-            return;
-        }
-
-        using var style = new CanvasStrokeStyle
-        {
-            StartCap = CanvasCapStyle.Round,
-            EndCap = CanvasCapStyle.Round,
-            LineJoin = CanvasLineJoin.Round
-        };
-        ds.DrawLine(x1, y1, x2, y2, color, size, style);
-    }
-
-    private static void StrokeShape(CanvasDrawingSession ds, DrawTool tool, BoardPoint a, BoardPoint b, Color color, int size, bool dashed)
-    {
-        ds.Antialiasing = CanvasAntialiasing.Antialiased;
-
-        using var style = new CanvasStrokeStyle
-        {
-            DashStyle = dashed ? CanvasDashStyle.Dash : CanvasDashStyle.Solid
-        };
-
-        if (tool == DrawTool.Line)
-        {
-            style.StartCap = CanvasCapStyle.Round;
-            style.EndCap = CanvasCapStyle.Round;
-            ds.DrawLine(a.X, a.Y, b.X, b.Y, color, size, style);
-            return;
-        }
-
-        int x = Math.Min(a.X, b.X);
-        int y = Math.Min(a.Y, b.Y);
-        int w = Math.Abs(a.X - b.X);
-        int h = Math.Abs(a.Y - b.Y);
-        if (w == 0 || h == 0) return;
-
-        if (tool == DrawTool.Rectangle)
-        {
-            ds.DrawRectangle(x, y, w, h, color, size, style);
-        }
-        else if (tool == DrawTool.Circle)
-        {
-            ds.DrawEllipse(x + w / 2f, y + h / 2f, w / 2f, h / 2f, color, size, style);
-        }
     }
 }
