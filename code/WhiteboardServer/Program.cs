@@ -8,9 +8,7 @@ namespace WhiteboardServer;
 
 class Program
 {
-    private static string _serverIP = "0.0.0.0";
-    private static int _serverPort = 8888;
-
+    private static ServerConfig _config = new ServerConfig();
     static void Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
@@ -20,20 +18,18 @@ class Program
         Console.WriteLine("        MÁY CHỦ WHITEBOARD ONLINE (SERVER)        ");
         Console.WriteLine("==================================================");
 
-        // Đọc cấu hình từ config.ini nếu có sẵn (Hỗ trợ T2 của Thành viên B)
-        LoadConfigIni("config.ini");
-
+        _config = ServerConfig.Load();
         // Khởi tạo cơ sở dữ liệu SQLite lưu lịch sử nét vẽ (Hạng mục T4 - Thành viên D)
         DatabaseManager.InitializeDatabase("Data Source=whiteboard.db");
 
         try
         {
-            IPAddress ipAddr = IPAddress.Parse(_serverIP);
-            TcpListener listener = new TcpListener(ipAddr, _serverPort);
+            IPAddress ipAddr = IPAddress.Parse(_config.IP);
+            TcpListener listener = new TcpListener(ipAddr, _config.Port);
             listener.Start();
 
-            Console.WriteLine($"[SERVER] Đang lắng nghe kết nối tại cổng {_serverPort}...");
-            PrintLocalIPs();
+            Console.WriteLine($"[SERVER] Đang lắng nghe kết nối tại cổng {_config.Port}...");
+            PrintLocalIPs(_config.Port);
 
             Console.WriteLine("[SERVER] Sẵn sàng phục vụ các phòng vẽ. Nhấn Ctrl+C để dừng.");
             Console.WriteLine("--------------------------------------------------");
@@ -57,41 +53,11 @@ class Program
         }
     }
 
-    private static void LoadConfigIni(string filePath)
-    {
-        if (!File.Exists(filePath)) return;
-
-        try
-        {
-            foreach (var line in File.ReadAllLines(filePath))
-            {
-                string clean = line.Trim();
-                if (string.IsNullOrEmpty(clean) || clean.StartsWith(";") || clean.StartsWith("#") || clean.StartsWith("["))
-                    continue;
-
-                int idx = clean.IndexOf('=');
-                if (idx > 0)
-                {
-                    string key = clean[..idx].Trim().ToLowerInvariant();
-                    string val = clean[(idx + 1)..].Trim();
-
-                    if (key == "ip") _serverIP = val;
-                    if (key == "port" && int.TryParse(val, out int p)) _serverPort = p;
-                }
-            }
-            Console.WriteLine($"[CONFIG] Đã nạp cấu hình từ {filePath}: IP={_serverIP}, Port={_serverPort}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[CONFIG WARNING] Không thể đọc {filePath}: {ex.Message}");
-        }
-    }
-
-    private static void PrintLocalIPs()
+    private static void PrintLocalIPs(int port)
     {
         Console.WriteLine();
         Console.WriteLine(">>> Địa chỉ IP để kết nối từ Client:");
-        Console.WriteLine($"   • Cùng máy (Localhost): 127.0.0.1 (Cổng {_serverPort})");
+        Console.WriteLine($"   • Cùng máy (Localhost): 127.0.0.1 (Cổng {port})");
 
         try
         {
