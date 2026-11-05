@@ -1,5 +1,7 @@
 <Solution>
-  <Project Path="WhiteboardClient/WhiteboardClient.csproj" />
+  <Project Path="WhiteboardClient/WhiteboardClient.csproj">
+    <Platform Solution="Debug|*" Project="x64" />
+  </Project>
   <Project Path="WhiteboardServer/WhiteboardServer.csproj" />
   <Project Path="WhiteboardShared/WhiteboardShared.csproj" />
   <Project Path="WhiteboardStressTest/WhiteboardStressTest.csproj" />
