@@ -1,6 +1,9 @@
 namespace WhiteboardClient.Models;
 
-/// <summary>Công cụ vẽ đang chọn.</summary>
+/// <summary>
+/// Danh mục các công cụ tương tác trên bảng vẽ.
+/// Phụ trách: Thành viên A (T7 - Pen), Thành viên B (T8 - Hình khối &amp; Tẩy), Thành viên C (T9a - Pan).
+/// </summary>
 public enum DrawTool
 {
     Pen,

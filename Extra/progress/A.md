@@ -1,8 +1,8 @@
 # Nhật Ký Tiến Độ Cá Nhân - Thành Viên A
 
-- **Họ và tên:** *(Điền họ tên của bạn)*
-- **Mã sinh viên:** *(Điền MSSV)*
-- **Tài khoản GitHub:** *(Điền GitHub Username)*
+- **Họ và tên:** Phan Thanh Tùng
+- **Mã sinh viên:** 066206004656
+- **Tài khoản GitHub:** tungf2006
 - **Vai trò trong dự án:** Thành viên A
 - **Hạng mục code chính:** **T1** (Shared: Gói tin & Giao thức mạng) và **T7** (Client: Khung bảng vẽ Win2D & Nét vẽ tự do)
 - **Hạng mục tài liệu:** `T0-Quy-uoc-repo-va-cau-truc.md` và `T6-Client-Ket-noi-mang.md`
