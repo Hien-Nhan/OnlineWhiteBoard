@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -156,8 +156,23 @@ public sealed class ClientHandler
         // Vào phòng mới thông qua RoomManager
         _roomManager.JoinRoom(targetRoom, this);
 
-        // TODO (T4 - Thành viên D): Gọi HistoryStore để phát lại lịch sử nét vẽ cũ cho Client mới vào phòng
-        // HistoryStore.ReplayHistory(this, targetRoom);
+        // Đồng bộ lịch sử nét vẽ cũ cho Client mới vào phòng (Hạng mục T4 - Thành viên D)
+        try
+        {
+            var history = DatabaseManager.GetRoomHistory(targetRoom);
+            foreach (var stroke in history)
+            {
+                Send(stroke);
+            }
+            if (history.Count > 0)
+            {
+                Console.WriteLine($"[SQLite] Đã phát lại {history.Count} nét vẽ lịch sử phòng [{targetRoom}] cho '{Username}'.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SQLite Error] Đồng bộ lịch sử phòng [{targetRoom}] thất bại: {ex.Message}");
+        }
 
         // Phát danh sách user online cho toàn phòng nhìn thấy nhau
         _roomManager.BroadcastUserList(targetRoom);
@@ -184,8 +199,15 @@ public sealed class ClientHandler
         // 1. Chuyển tiếp nét vẽ cho các client khác trong cùng phòng (loại trừ người vẽ)
         _roomManager.Broadcast(targetRoom, rawDrawPacket, sender: this);
 
-        // TODO (T4 - Thành viên D): Lưu nét vẽ vào SQLite
-        // HistoryStore.SaveStroke(targetRoom, Username, rawDrawPacket);
+        // Lưu nét vẽ vào SQLite (Hạng mục T4 - Thành viên D)
+        try
+        {
+            DatabaseManager.SaveDraw(targetRoom, Username, rawDrawPacket);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SQLite Error] Không thể lưu nét vẽ phòng [{targetRoom}]: {ex.Message}");
+        }
     }
 
     private void HandleClearCanvas(string rawPacket, string[] p)
@@ -203,8 +225,16 @@ public sealed class ClientHandler
         // Broadcast lệnh xóa bảng cho tất cả thành viên trong phòng (bao gồm cả sender nếu cần đồng bộ)
         _roomManager.Broadcast(targetRoom, rawPacket, sender: this);
 
-        // TODO (T4 - Thành viên D): Xóa lịch sử bảng vẽ phòng này trong SQLite
-        // HistoryStore.ClearHistory(targetRoom);
+        // Xóa lịch sử bảng vẽ phòng này trong SQLite (Hạng mục T4 - Thành viên D)
+        try
+        {
+            int deleted = DatabaseManager.ClearRoomHistory(targetRoom);
+            Console.WriteLine($"[SQLite] Đã xóa {deleted} nét vẽ lịch sử của phòng [{targetRoom}].");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SQLite Error] Không thể xóa lịch sử phòng [{targetRoom}]: {ex.Message}");
+        }
     }
 
     /// <summary>

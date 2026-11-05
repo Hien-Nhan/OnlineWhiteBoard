@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -22,6 +22,9 @@ class Program
 
         // Đọc cấu hình từ config.ini nếu có sẵn (Hỗ trợ T2 của Thành viên B)
         LoadConfigIni("config.ini");
+
+        // Khởi tạo cơ sở dữ liệu SQLite lưu lịch sử nét vẽ (Hạng mục T4 - Thành viên D)
+        DatabaseManager.InitializeDatabase("Data Source=whiteboard.db");
 
         try
         {
