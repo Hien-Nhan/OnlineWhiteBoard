@@ -191,90 +191,7 @@ public sealed partial class BoardPage : Page
         // Bảng vẽ đã được tạo ở hàm khởi tạo; không có tài nguyên nào khác cần nạp
     }
 
-    // ==================================================================
-    //  CHỌN CÔNG CỤ / MÀU / CỠ NÉT
-    // ==================================================================
-    private void ToolButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is ToggleButton { Tag: string tag } && Enum.TryParse(tag, out DrawTool tool))
-        {
-            SelectTool(tool);
-        }
-    }
-
-    private void SelectTool(DrawTool tool)
-    {
-        _tool = tool;
-        _isDrawing = false;
-        _isDrawingShape = false;
-
-        // Chỉ một công cụ được bật; bấm lại công cụ đang chọn thì vẫn giữ trạng thái bật
-        foreach (KeyValuePair<DrawTool, ToggleButton> kv in _toolButtons)
-        {
-            kv.Value.IsChecked = kv.Key == tool;
-        }
-
-        Surface.SetCursorShape(tool == DrawTool.Pan ? InputSystemCursorShape.SizeAll : InputSystemCursorShape.Cross);
-
-        UpdateToolInfo();
-        BoardCanvas.Invalidate();
-    }
-
-    private void PaletteView_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_ready) return;
-        if (PaletteView.SelectedItem is ColorSwatch swatch)
-        {
-            SetColor(swatch.Color, fromPalette: true);
-        }
-    }
-
-    private void CustomColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
-    {
-        if (!_ready) return;
-        SetColor(args.NewColor, fromPalette: false);
-    }
-
-    private void SetColor(Color c, bool fromPalette)
-    {
-        _color = c;
-
-        // Màu tuỳ chọn thì bỏ đánh dấu trong bảng màu nhanh
-        if (!fromPalette) PaletteView.SelectedIndex = -1;
-
-        ColorPreview.Background = new SolidColorBrush(c);
-        ColorPreviewText.Text = HexColor.ToHex(c);
-        double luminance = 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
-        ColorPreviewText.Foreground = new SolidColorBrush(luminance > 150 ? Colors.Black : Colors.White);
-
-        if (_tool == DrawTool.Eraser) SelectTool(DrawTool.Pen);
-        UpdateToolInfo();
-    }
-
-    private void SizeSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
-    {
-        if (!_ready) return;
-        _brush = (int)Math.Round(SizeSlider.Value);
-        SizeText.Text = _brush + " px";
-        UpdateToolInfo();
-    }
-
-    private void UpdateToolInfo()
-    {
-        if (!_ready && ToolInfoText == null) return;
-
-        string name = _tool switch
-        {
-            DrawTool.Pen => "Bút vẽ",
-            DrawTool.Eraser => "Tẩy",
-            DrawTool.Line => "Đường thẳng",
-            DrawTool.Rectangle => "Hình chữ nhật",
-            DrawTool.Pan => "Di chuyển bảng",
-            _ => "Hình tròn"
-        };
-        ToolInfoText.Text = $"Công cụ: {name}   |   Cỡ nét: {_brush} px   |   Màu: {HexColor.ToHex(_color)}   |   Cuộn chuột: zoom   |   Chuột phải/giữa: kéo bảng";
-    }
-
+   
     // ==================================================================
     //  NÚT CHỨC NĂNG
     // ==================================================================
@@ -679,12 +596,6 @@ public sealed partial class BoardPage : Page
         StrokeSegment(ds, x1, y1, x2, y2, color, size);
     }
 
-    private void DrawShapeOnBoard(DrawTool tool, BoardPoint a, BoardPoint b, Color color, int size)
-    {
-        if (_board == null) return;
-        using CanvasDrawingSession ds = _board.CreateDrawingSession();
-        StrokeShape(ds, tool, a, b, color, size, dashed: false);
-    }
 
     private static void StrokeSegment(CanvasDrawingSession ds, int x1, int y1, int x2, int y2, Color color, int size)
     {
@@ -705,36 +616,4 @@ public sealed partial class BoardPage : Page
         ds.DrawLine(x1, y1, x2, y2, color, size, style);
     }
 
-    private static void StrokeShape(CanvasDrawingSession ds, DrawTool tool, BoardPoint a, BoardPoint b, Color color, int size, bool dashed)
-    {
-        ds.Antialiasing = CanvasAntialiasing.Antialiased;
-
-        using var style = new CanvasStrokeStyle
-        {
-            DashStyle = dashed ? CanvasDashStyle.Dash : CanvasDashStyle.Solid
-        };
-
-        if (tool == DrawTool.Line)
-        {
-            style.StartCap = CanvasCapStyle.Round;
-            style.EndCap = CanvasCapStyle.Round;
-            ds.DrawLine(a.X, a.Y, b.X, b.Y, color, size, style);
-            return;
-        }
-
-        int x = Math.Min(a.X, b.X);
-        int y = Math.Min(a.Y, b.Y);
-        int w = Math.Abs(a.X - b.X);
-        int h = Math.Abs(a.Y - b.Y);
-        if (w == 0 || h == 0) return;
-
-        if (tool == DrawTool.Rectangle)
-        {
-            ds.DrawRectangle(x, y, w, h, color, size, style);
-        }
-        else if (tool == DrawTool.Circle)
-        {
-            ds.DrawEllipse(x + w / 2f, y + h / 2f, w / 2f, h / 2f, color, size, style);
-        }
-    }
 }
