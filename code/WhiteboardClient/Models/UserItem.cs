@@ -1,17 +1,25 @@
 namespace WhiteboardClient.Models;
 
-/// <summary>Một dòng trong danh sách người đang online.</summary>
+/// <summary>
+/// Biểu diễn một người dùng trong danh sách thành viên đang trực tuyến tại phòng vẽ.
+/// Phụ trách: Thành viên A (Hạng mục T7).
+/// </summary>
 public sealed class UserItem
 {
     public UserItem(string name, bool isSelf)
     {
-        Name = name;
-        Label = isSelf ? name + " (Bạn)" : name;
+        string safeName = string.IsNullOrWhiteSpace(name) ? "Ẩn danh" : name.Trim();
+        Name = safeName;
+        IsSelf = isSelf;
+        Label = isSelf ? $"{safeName} (Bạn)" : safeName;
     }
 
-    /// <summary>Tên gốc — PersonPicture dùng để lấy chữ cái đầu và màu nền.</summary>
+    /// <summary>Tên gốc của người dùng — dùng cho PersonPicture lấy chữ cái đại diện.</summary>
     public string Name { get; }
 
-    /// <summary>Tên hiển thị (có hậu tố "(Bạn)" cho chính mình).</summary>
+    /// <summary>Đánh dấu người dùng này có phải là chính client hiện tại hay không.</summary>
+    public bool IsSelf { get; }
+
+    /// <summary>Tên hiển thị trên danh sách (có hậu tố "(Bạn)" cho chính mình).</summary>
     public string Label { get; }
 }
