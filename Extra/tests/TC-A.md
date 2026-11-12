@@ -1,6 +1,6 @@
 # Danh Sách Test Case Của Thành Viên A
 
-Người phụ trách: **Thành viên A**  
+Người phụ trách: **Thành viên A (Phan Thanh Tùng)**  
 Hạng mục: **T1** (Giao thức mạng & Shared Packets) và **T7** (Bảng vẽ Win2D & Nét vẽ tự do)
 
 ---
