@@ -2,7 +2,7 @@
 setlocal
 chcp 65001 >nul
 title Whiteboard Online - Menu
-set "S=%~dp0Extra\scripts"
+set "S=%~dp0Extra\script"
 
 :menu
 cls
