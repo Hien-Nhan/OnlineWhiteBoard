@@ -237,7 +237,10 @@ public sealed partial class BoardPage : Page
         if (!NetworkClient.SendMessage("CLEAR_CANVAS;" + _session.RoomId))
         {
             MarkConnectionLost();
+            return;
         }
+
+        ClearBoardLocal();
     }
 
     private async void SaveButton_Click(object sender, RoutedEventArgs e)

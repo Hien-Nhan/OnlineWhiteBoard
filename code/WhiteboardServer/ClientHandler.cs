@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -222,8 +222,8 @@ public sealed class ClientHandler
 
         Console.WriteLine($"[CLEAR_CANVAS] Client '{Username}' yêu cầu xóa bảng phòng [{targetRoom}]");
 
-        // Broadcast lệnh xóa bảng cho tất cả thành viên trong phòng (bao gồm cả sender nếu cần đồng bộ)
-        _roomManager.Broadcast(targetRoom, rawPacket, sender: this);
+        // Broadcast lệnh xóa bảng cho tất cả thành viên trong phòng (bao gồm cả sender)
+        _roomManager.Broadcast(targetRoom, rawPacket, sender: null);
 
         // Xóa lịch sử bảng vẽ phòng này trong SQLite (Hạng mục T4 - Thành viên D)
         try
